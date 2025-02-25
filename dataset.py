@@ -1,47 +1,44 @@
 import cv2
 import os
+from facenet_pytorch import MTCNN
 
-# Initialize webcam
-cam = cv2.VideoCapture(0)
-cam.set(3, 640)  # Set video width
-cam.set(4, 480)  # Set video height
+# Initialize MTCNN for face detection
+mtcnn = MTCNN()
 
-# Load Haar cascade classifier for face detection
-face_detector = cv2.CascadeClassifier('H:/sem-6/haarcascade_frontalface_default.xml')
+# Directory to store dataset
+dataset_path = "dataset"
+if not os.path.exists(dataset_path):
+    os.makedirs(dataset_path)
 
-# Get user input for face ID
-face_id = input('\nEnter user ID and press <Return>: ')
+# Get user name for dataset
+user_name = input("Enter your name: ")
+user_folder = os.path.join(dataset_path, user_name)
+if not os.path.exists(user_folder):
+    os.makedirs(user_folder)
 
-print("\n[INFO] Initializing face capture. Look at the camera and wait...")
-
-# Initialize individual sampling face count
+# Open webcam
+cap = cv2.VideoCapture(0)
 count = 0
 
-# Start face detection and capture 30 images
-while True:
-    ret, img = cam.read()
+while count < 50:  # Capture 50 images per user
+    ret, frame = cap.read()
     if not ret:
-        print("\n[ERROR] Failed to capture image")
         break
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = face_detector.detectMultiScale(gray, 1.3, 5)
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    face, _ = mtcnn(frame_rgb, return_prob=True)
 
-    for (x, y, w, h) in faces:
-        cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+    if face is not None:
+        img_path = os.path.join(user_folder, f"{count}.jpg")
+        cv2.imwrite(img_path, frame)
         count += 1
+        print(f"Saved {img_path}")
 
-        # Save captured face images in the dataset folder
-        cv2.imwrite(f"H:/sem-6/dataset/User.{face_id}.{count}.jpg", gray[y:y+h, x:x+w])
+    cv2.imshow("Face Capture", frame)
 
-    cv2.imshow('image', img)
-
-    # Press 'ESC' to exit
-    k = cv2.waitKey(100) & 0xff
-    if k == 27 or count >= 30:
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Cleanup
-print("\n[INFO] Exiting Program and cleaning up...")
-cam.release()
+cap.release()
 cv2.destroyAllWindows()
+print("Dataset collection complete!")

@@ -1,70 +1,64 @@
-import cv2
 import numpy as np
-import os
+import cv2
+import torch
+from facenet_pytorch import InceptionResnetV1, MTCNN
+from numpy.linalg import norm
 
-# Load trained recognizer model
-recognizer = cv2.face.LBPHFaceRecognizer_create()
-recognizer.read('H:/sem-6/trainer/trainer.yml') 
 
-# Load Haar cascade for face detection
-cascadePath = "H:/sem-6/haarcascade_frontalface_default.xml"
-faceCascade = cv2.CascadeClassifier(cascadePath)
+mtcnn = MTCNN()
 
-# Define font for text overlay
-font = cv2.FONT_HERSHEY_SIMPLEX
 
-# ID counter (number of persons included)
-id = 5  # Adjust according to the dataset
+facenet = InceptionResnetV1(pretrained='vggface2').eval()
 
-# List of names corresponding to recognized IDs (index 0 left empty)
-names = ['', 'bhavya', 'anju','Hamza','Megha','Dev']
 
-# Initialize webcam
-cam = cv2.VideoCapture(0)
-cam.set(3, 640)  # Set video width
-cam.set(4, 480)  # Set video height
+saved_embeddings = np.load("face_embeddings.npy", allow_pickle=True).item()
 
-# Define min window size to be recognized as a face
-minW = int(0.1 * cam.get(3))
-minH = int(0.1 * cam.get(4))
+
+def cosine_similarity(embedding1, embedding2):
+    return np.dot(embedding1, embedding2.T) / (norm(embedding1) * norm(embedding2))
+
+
+cap = cv2.VideoCapture(0)
 
 while True:
-    ret, img = cam.read()
+    ret, frame = cap.read()
     if not ret:
-        print("\n[ERROR] Failed to capture image")
         break
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    faces = faceCascade.detectMultiScale(
-        gray, scaleFactor=1.2, minNeighbors=5, minSize=(minW, minH)
-    )
+  
+    face, _ = mtcnn(frame_rgb, return_prob=True)
 
-    for (x, y, w, h) in faces:
-        cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+    if face is not None:
+ 
+        new_embedding = facenet(face.unsqueeze(0)).detach().numpy().flatten()
+        best_match = None
+        max_similarity = 0
 
-        id, confidence = recognizer.predict(gray[y:y + h, x:x + w])
 
-        # Confidence level check (lower confidence means better match)
-        if confidence < 100:
-            name = names[id] if id < len(names) else "Unknown"
-            confidence_text = " {0}%".format(round(100 - confidence))
+        for person, embeddings in saved_embeddings.items():
+            for stored_embedding in embeddings:
+                similarity = cosine_similarity(new_embedding, stored_embedding.flatten())
+
+                if similarity > max_similarity:
+                    max_similarity = similarity
+                    best_match = person
+
+
+        if max_similarity > 0.7:  
+            text = f"Recognized: {best_match}"
+            color = (0, 255, 0)
         else:
-            name = "Unknown"
-            confidence_text = " {0}%".format(round(100 - confidence))
+            text = "Unknown Face"
+            color = (0, 0, 255)
 
-        # Display name and confidence on screen
-        cv2.putText(img, str(name), (x + 5, y - 5), font, 1, (255, 255, 255), 2)
-        cv2.putText(img, str(confidence_text), (x + 5, y + h - 5), font, 1, (255, 255, 0), 1)
+        cv2.putText(frame, text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
 
-    cv2.imshow('camera', img)
+    cv2.imshow("Face Recognition", frame)
 
-    # Press 'ESC' to exit
-    k = cv2.waitKey(10) & 0xff
-    if k == 27:
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Cleanup
-print("\n[INFO] Exiting Program and cleanup stuff")
-cam.release()
+cap.release()
 cv2.destroyAllWindows()
