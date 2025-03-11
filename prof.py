@@ -3,31 +3,46 @@ import cv2
 import torch
 import csv
 import time
+import sys
 from datetime import datetime, timedelta
 from facenet_pytorch import InceptionResnetV1, MTCNN
 from numpy.linalg import norm
 from pymongo import MongoClient  # New import for MongoDB Atlas
 
+if len(sys.argv) < 2:
+    print("Error: No subject name provided.")
+    sys.exit(1)
+
+subject_name = sys.argv[1]
+print(f"Running attendance system for subject: {subject_name}")
+
 # Function to upload CSV file to MongoDB Atlas
 def upload_csv_to_mongo(csv_filename):
-    # Replace with your actual Mongo Atlas connection string
+    # Replace with your actual MongoDB Atlas connection string
     connection_string = "mongodb+srv://hamzamirza9084:surge7698302331@cluster0.ixn2m.mongodb.net/"
     client = MongoClient(connection_string)
-    # Replace "attendance_db" with your database name
-    db = client["attendance_db"]
-    
-    # Create a collection name with the current timestamp added
-    timestamp_str = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    collection_name = f"professor_attendance_{timestamp_str}"
-    collection = db[collection_name]
-    
+    db = client["attendance_db"]  # Replace with your database name
+
+    # Dynamic collection name based on professor_csv_filename
+    professor_collection_name = csv_filename.replace(".csv", "")  # Remove .csv extension
+    professor_collection = db[professor_collection_name]
+
+    # Fixed collection for all professor attendances
+    main_collection = db["professor_attendances"]
+
     with open(csv_filename, 'r', newline='') as csvfile:
         csv_reader = csv.DictReader(csvfile)
         data = list(csv_reader)
-        
+
     if data:
-        collection.insert_many(data)
-        print(f"Uploaded {len(data)} records from {csv_filename} to MongoDB Atlas in collection '{collection_name}'.")
+        # Insert into the professor's specific collection
+        professor_collection.insert_many(data)
+        print(f"Uploaded {len(data)} records from {csv_filename} to MongoDB Atlas in collection '{professor_collection_name}'.")
+
+        # Insert into the main professor_attendances collection as well
+        main_collection.insert_many(data)
+        print(f"Uploaded {len(data)} records from {csv_filename} to MongoDB Atlas in collection 'professor_attendances'.")
+
     else:
         print(f"No data found in {csv_filename} to upload.")
 
@@ -48,7 +63,7 @@ detected_professors = set()
 attendance_set = set()
 
 # Get subject name from the user
-subject_name = input("Enter Subject Name: ")
+#subject_name = input("Enter Subject Name: ")
 
 # Attendance CSV for both professors and students
 attendance_file = "attendance.csv"
@@ -99,7 +114,7 @@ while True:
             if best_match not in detected_professors:
                 detected_professors.add(best_match)
                 detection_time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-                professor_csv_filename = f"{best_match}_{subject_name}_{detection_time}.csv"
+                professor_csv_filename = f"{best_match}.csv"
 
                 with open(professor_csv_filename, mode='w', newline='') as file:
                     writer = csv.writer(file)
@@ -200,4 +215,4 @@ if professor_csv_filename:
     upload_csv_to_mongo(professor_csv_filename)
 
 cap.release()
-cv2.destroyAllWindows()
+cv2.destroyAllWindows() 
